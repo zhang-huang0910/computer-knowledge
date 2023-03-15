@@ -2,14 +2,10 @@ package com.blue;
 
 import java.io.*;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * @author zhangh <br/>
@@ -19,15 +15,14 @@ public class DownLoadImage {
     private final String joinName;
     private final String fileName;
     private final String suffix;
-    private final String delimiter;
+    private final String delimiter = System.getProperty("file.separator");
     private final List<String> urlList;
     private static final Pattern reg = Pattern.compile("\\(https*:\\/\\/.+?(.png)\\)");
 
-    public DownLoadImage(String[] args) {
-        this.fileName = args[0];
-        this.joinName = args[1];
-        this.suffix = args[2];
-        this.delimiter = System.getProperty("file.separator");
+    public DownLoadImage(List<String> args) {
+        this.fileName = args.get(0);
+        this.joinName = args.get(1);
+        this.suffix = args.get(2);
         this.urlList = urlList(fileName);
     }
 
@@ -37,7 +32,7 @@ public class DownLoadImage {
         List<String> urlList = new ArrayList<>();
         try {
             //new URI()
-            file = new FileReader(fileName);//读取文件流位置
+            file = new FileReader(pathFile);//读取文件流位置
             br = new BufferedReader(file);//构造一个BufferedReader类读取文件
             String document;
             while ((document = br.readLine()) != null) {
@@ -100,15 +95,11 @@ public class DownLoadImage {
         }
     }
 
-    private List<String> simpleImageNames(List<String> list) {
-        return list.stream()
-                .map(e -> {
-                    int index = e.lastIndexOf("/");
-                    String filename = e.substring(index + 1);
-                    int suffix = filename.lastIndexOf(".");
-                    return filename.substring(0, suffix);
-                })
-                .collect(Collectors.toList());
+    private String simpleImageName(String fileStr) {
+        int index = fileStr.lastIndexOf("/");
+        String filename = fileName.substring(index + 1);
+        int suffix = filename.lastIndexOf(".");
+        return filename.substring(0, suffix);
     }
 
     private void createFile() {
@@ -118,38 +109,38 @@ public class DownLoadImage {
         }
     }
 
-    private void batchDownImages(List<String> suffixFileName) {
-        long startTime = System.currentTimeMillis();
-        for (int i = 0; i < urlList.size(); i++) {
-            String newFileName = this.filepath(fileName) + delimiter + suffixFileName.get(i);
-            downImage(urlList.get(i), newFileName);
-        }
-        long endTime = System.currentTimeMillis();
-        System.out.println("batchDownImages run time: " + (endTime - startTime) + "ms");
+    private void batchDownImages(Map<String, String> originAndNewFileName) {
+        originAndNewFileName.entrySet().forEach(entry -> {
+            String newFileName = this.filepath(fileName) + delimiter + entry.getValue();
+            downImage(entry.getKey(), newFileName);
+        });
     }
 
-    private List<String> newSuffixFileName(Boolean useSimpleName) {
-        List<String> simpleImageNames = null;
-        if (useSimpleName) {
-            simpleImageNames = simpleImageNames(urlList);
-        } else {
-            simpleImageNames = IntStream.range(1, urlList.size() + 1).mapToObj(String::valueOf).collect(Collectors.toList());
+    private Map<String, String> newSuffixFileName(Boolean useSimpleName) {
+        HashMap<String, String> originAndNewFileName = new HashMap<>();
+        int flag = 1;
+        for (String url : urlList) {
+            if (!originAndNewFileName.containsKey(url)) {
+                String value;
+                if (useSimpleName) {
+                    value = simpleImageName(url);
+                } else {
+                    value = String.valueOf(flag++);
+                }
+                if (value == null) continue;
+                originAndNewFileName.put(url, joinName + delimiter + value + suffix);
+            }
         }
-        return simpleImageNames.stream().map(e -> joinName + delimiter + e + suffix).collect(Collectors.toList());
+        return originAndNewFileName;
     }
 
-    private void replaceUrlForFile(List<String> oldUrl, List<String> newUrl, String fileName) {
-        HashMap<String, String> hashMap = new HashMap<>(oldUrl.size());
-        for (int i = 0; i < oldUrl.size(); i++) {
-            hashMap.put(oldUrl.get(i), newUrl.get(i));
-        }
+    private void replaceUrlForFile(Map<String, String> originAndNewFileName, String fileName) {
         try {
             //读取文件并替换
             File file = new File(fileName);
             FileReader fileReader = new FileReader(file);
             //String newFileName = fileName.substring(0, fileName.lastIndexOf("md")) + "tmp";
             //File newFile = new File(newFileName);
-
             BufferedReader bufferedReader = new BufferedReader(fileReader);
             String document;
             StringBuffer buffer = new StringBuffer();
@@ -157,7 +148,7 @@ public class DownLoadImage {
                 Matcher m = reg.matcher(document);
                 while (m.find()) {
                     String key = m.group().substring(1, m.group().length() - 1);
-                    document = document.replace(key, hashMap.get(key));
+                    document = document.replace(key, originAndNewFileName.get(key));
                 }
                 buffer.append(document);
                 buffer.append("\n");
@@ -174,39 +165,53 @@ public class DownLoadImage {
         }
     }
 
-    public static void main(String[] args) {
-        long startTime = System.currentTimeMillis();
-        String parentPath = "D:\\program\\IT事务相关\\项目相关\\从0到1敲代码实现商城项目\\mca-project-mall\\01-课件资料\\02-进阶课件";
-        String orinName = "14-Skywalking.md";
-        String minPath = orinName.substring(0, 2);
-        String fileName = parentPath + System.getProperty("file.separator") + orinName;
-        String[] str = new String[]{fileName, "jpg\\" + minPath, ".png"};
-        System.out.println(orinName+": start modify...");
-        DownLoadImage downLoadImage = new DownLoadImage(str);
+    private static List<String> getArgs(String str) {
+        File file = new File(str);
+        List<String> args = new ArrayList<>();
+        args.add(0, str);
+        args.add(1, "jpg\\" + file.getName().substring(0, 2));
+        args.add(2, ".png");
+        return args;
+    }
+
+    private static void batchModifyFileImages(String str) {
+        DownLoadImage downLoadImage = new DownLoadImage(getArgs(str));
         //downLoadImage.simpleImageNames(downLoadImage.urlList(fileName)).forEach(System.out::println);
         downLoadImage.createFile();
-        List<String> newSuffixFileName = downLoadImage.newSuffixFileName(false);
+        Map<String, String> newSuffixFileName = downLoadImage.newSuffixFileName(false);
         if (newSuffixFileName == null || newSuffixFileName.size() == 0) {
             return;
         }
-        CountDownLatch downLatch = new CountDownLatch(2);
         //加载图片
-        new Thread(() -> {
-            downLoadImage.batchDownImages(newSuffixFileName);
-            downLatch.countDown();
-        }).start();
+        downLoadImage.batchDownImages(newSuffixFileName);
         //修改文件路径
-        new Thread(() -> {
-            downLoadImage.replaceUrlForFile(downLoadImage.urlList, newSuffixFileName, downLoadImage.fileName);
-            downLatch.countDown();
-        }).start();
-        try {
-            downLatch.await();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+        downLoadImage.replaceUrlForFile(newSuffixFileName, downLoadImage.fileName);
+
+    }
+
+
+    public static void main(String[] args) {
+        long startTime = System.currentTimeMillis();
+        String orinName = "";
+        File file = new File(orinName);
+        if (args != null && args.length == 1) {
+            orinName = args[0];
+        }
+        if (orinName == null || orinName.trim().isEmpty()) {
+            System.out.println("No args or invalid args...");
+            return;
+        }
+        if (file.isDirectory()) {
+            File[] files = file.listFiles(fil -> fil.getName().matches(".*\\.md"));
+            Stream.of(files).forEach(fi -> batchModifyFileImages(fi.getAbsolutePath()));
+        } else {
+            if (file.isFile()) {
+                batchModifyFileImages(orinName);
+            } else {
+                System.out.println("invalid filePath...");
+            }
         }
         long endTime = System.currentTimeMillis();
         System.out.println("main run time: " + (endTime - startTime) + "ms");
     }
-
 }
