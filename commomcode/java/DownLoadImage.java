@@ -21,7 +21,7 @@ public class DownLoadImage {
     private final String suffix;
     private final String delimiter;
     private final List<String> urlList;
-    private static final Pattern reg = Pattern.compile("(https*:\\/\\/.+?(.png))");
+    private static final Pattern reg = Pattern.compile("\\(https*:\\/\\/.+?(.png)\\)");
 
     public DownLoadImage(String[] args) {
         this.fileName = args[0];
@@ -43,7 +43,7 @@ public class DownLoadImage {
             while ((document = br.readLine()) != null) {
                 Matcher m = reg.matcher(document);
                 while (m.find()) {
-                    urlList.add(m.group());
+                    urlList.add(m.group().substring(1, m.group().length() - 1));
                 }
             }
         } catch (Exception e) {
@@ -156,7 +156,8 @@ public class DownLoadImage {
             while ((document = bufferedReader.readLine()) != null) {
                 Matcher m = reg.matcher(document);
                 while (m.find()) {
-                    document = document.replace(m.group(), hashMap.get(m.group()));
+                    String key = m.group().substring(1, m.group().length() - 1);
+                    document = document.replace(key, hashMap.get(key));
                 }
                 buffer.append(document);
                 buffer.append("\n");
@@ -175,19 +176,18 @@ public class DownLoadImage {
 
     public static void main(String[] args) {
         long startTime = System.currentTimeMillis();
-        String fileName = "C:\\Users\\blue\\Downloads\\Consumer源码分析-笔记.md";
-        String[] str = new String[]{"C:\\Users\\blue\\Downloads\\Consumer源码分析-笔记.md", "jpg\\consumer", ".png"};
+        String parentPath = "D:\\program\\IT事务相关\\项目相关\\从0到1敲代码实现商城项目\\mca-project-mall\\01-课件资料\\02-进阶课件";
+        String orinName = "14-Skywalking.md";
+        String minPath = orinName.substring(0, 2);
+        String fileName = parentPath + System.getProperty("file.separator") + orinName;
+        String[] str = new String[]{fileName, "jpg\\" + minPath, ".png"};
+        System.out.println(orinName+": start modify...");
         DownLoadImage downLoadImage = new DownLoadImage(str);
         //downLoadImage.simpleImageNames(downLoadImage.urlList(fileName)).forEach(System.out::println);
         downLoadImage.createFile();
-        List<String> newSuffixFileName = downLoadImage.newSuffixFileName(true);
+        List<String> newSuffixFileName = downLoadImage.newSuffixFileName(false);
         if (newSuffixFileName == null || newSuffixFileName.size() == 0) {
             return;
-        }
-        try {
-            downLoadImage.replaceUrlForFile(downLoadImage.urlList, newSuffixFileName, fileName);
-        } catch (Exception e) {
-            e.printStackTrace();
         }
         CountDownLatch downLatch = new CountDownLatch(2);
         //加载图片
@@ -197,7 +197,7 @@ public class DownLoadImage {
         }).start();
         //修改文件路径
         new Thread(() -> {
-            downLoadImage.replaceUrlForFile(downLoadImage.urlList, newSuffixFileName, fileName);
+            downLoadImage.replaceUrlForFile(downLoadImage.urlList, newSuffixFileName, downLoadImage.fileName);
             downLatch.countDown();
         }).start();
         try {
